@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import psycopg2
 
 # Title for each query
@@ -9,8 +10,9 @@ thirdQueryTitle = "On which days did more than 1% of requests lead to errors? "
 
 
 def firstQuery():
-    query = """SELECT title, count(*) as total FROM log ,articles where
-    slug = regexp_replace(log.path, '^.*/', '') group by title  order by
+    query = """SELECT title, total FROM  (select path, count(*) as total from log
+    group by path) as log ,articles where slug =
+    regexp_replace(log.path, '^.*/', '') order by
     total desc limit 3;"""
     return query
 
@@ -28,14 +30,24 @@ def secondQuery():
 
 
 def thirdQuery():
-    query = """SELECT day, finalQuery.perc FROM(SELECT day, round(
-    (sum(requests)/(SELECT count(*)
-    FROM log where date(time) = day) * 100),2)   as perc FROM
-    (SELECT date(time) as day,count(*)
-    as requests FROM log where status like '%404%' group by day)
-    as finalPercentage group by day )
-    as finalQuery where finalQuery.perc > '1';"""
+    # Original Query.
+
+    # query = """SELECT day, finalQuery.perc FROM(SELECT day, round(
+    # (sum(requests)/(SELECT count(*)
+    # FROM log where date(time) = day) * 100),2)   as perc FROM
+    # (SELECT date(time) as day,count(*)
+    # as requests FROM log where status like '%404%' group by day)
+    # as finalPercentage group by day )
+    # as finalQuery where finalQuery.perc > '1';"""
+
+    # Updated Query after review 1
+    query = """SELECT day, round(perc,3) FROM(SELECT date(time) as day,
+    100.0 * sum(case when status != '200 OK' then 1 else 0 end)
+    / count(*) as perc FROM log group by date(time)) as daily_errors
+    where perc > 1;"""
+
     return query
+
 
 # Executes the query
 # @returns the query result
@@ -52,22 +64,26 @@ def getQueryResult(dbName, query):
 # Prints the query result
 
 
-def printQueryResults(queryResult, title):
+def printQueryResults(queryResult, title, isView):
     print("* " + title)
     for result in queryResult:
-        print("\t -> " + str(result[0]) + " --- " + str(result[1]))
+        if isView == 'true':
+            print("\t -> " + str(result[0]) +
+                  " --- " + str(result[1]) + " views")
+        else:
+            print("\t -> " + str(result[0]) + " --- " + str(result[1]) + "%")
 
 
 if __name__ == '__main__':
     # get first query
     queryResult = getQueryResult("news", firstQuery())
     # print first query
-    printQueryResults(queryResult, firstQueryTitle)
+    printQueryResults(queryResult, firstQueryTitle, 'true')
     # get second query
     queryResult = getQueryResult("news", secondQuery())
     # print second query
-    printQueryResults(queryResult, secondQueryTitle)
+    printQueryResults(queryResult, secondQueryTitle, 'true')
     # get third query
     queryResult = getQueryResult("news", thirdQuery())
     # print third query
-    printQueryResults(queryResult, thirdQueryTitle)
+    printQueryResults(queryResult, thirdQueryTitle, 'false')
